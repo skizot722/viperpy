@@ -41,7 +41,7 @@ class Viperpy(object):
     def __init__(self, username=None, password=None, token=None,
                  vipr_endpoint=None, token_endpoint=None, verify_ssl=False,
                  token_filename='viperpy.tkn', token_location='/tmp',
-                 request_timeout=15.0, cache_token=True):
+                 request_timeout=15.0, cache_token=True, allow_redirects=True):
         """
         Creates the ViperPy class that the client will directly work with
 
@@ -69,6 +69,7 @@ class Viperpy(object):
         self.token_location = token_location
         self.request_timeout = request_timeout
         self.cache_token = cache_token
+        self.allow_redirects = allow_redirects
         self._session = requests.Session()
         self._token_request = TokenRequest(
             username=self.username,
@@ -155,34 +156,35 @@ class Viperpy(object):
 
     def _request(self, url, json_payload='{}', http_verb='GET', params=None):
         json_payload = json.dumps(json_payload)
+        full_url = self._construct_url(url)
+
+        # Default request arguments.
+        req_args = {
+            'allow_redirects': self.allow_redirects,
+            'verify': self.verify_ssl,
+            'headers': self._fetch_headers(),
+            'timeout': self.request_timeout
+        }
 
         try:
             if http_verb == "PUT":
-                req = self._session.put(
-                    self._construct_url(url),
-                    verify=self.verify_ssl,
-                    headers=self._fetch_headers(),
-                    timeout=self.request_timeout,
-                    data=json_payload)
+                req_args.update(data=json_payload)
+                req = self._session.put(full_url, **req_args)
+
             elif http_verb == 'POST':
-                req = self._session.post(
-                    self._construct_url(url),
-                    verify=self.verify_ssl,
-                    headers=self._fetch_headers(),
-                    timeout=self.request_timeout,
-                    data=json_payload)
-            else:  # Default to GET
-                req = self._session.get(
-                    self._construct_url(url),
-                    verify=self.verify_ssl,
-                    headers=self._fetch_headers(),
-                    timeout=self.request_timeout,
-                    params=params)
+                req_args.update(data=json_payload)
+                req = self._session.post(full_url, **req_args)
+
+            # Default to GET
+            else:
+                req_args.update(params=params)
+                req = self._session.get(full_url, **req_args)
 
             if req.status_code != 200:
                 raise ViperpyException(
                     http_status_code=req.status_code,
                     vipr_message=req.text)
+
             return req.json()
 
         except requests.ConnectionError as conn_err:
